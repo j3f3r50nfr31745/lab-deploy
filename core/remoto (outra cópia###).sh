@@ -1,13 +1,16 @@
 #!/bin/bash
 
-REPO_URL="https://github.com/j3f3r50nfr31745/lab-deploy.git"
-REMOTE_DIR="/opt/lab-deploy"
-
 executar_remoto() {
 
     printf "\033c"
 
     titulo "EXECUÇÃO REMOTA"
+
+    # =====================================================
+    # DESCOBRIR DIRETÓRIO REAL DO PROJETO
+    # =====================================================
+
+    BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
     echo
 
@@ -20,55 +23,46 @@ executar_remoto() {
 
     linha
 
-    status_ok "Conectando ao host remoto"
+    status_ok "Copiando estrutura LAB"
 
     # =====================================================
-    # INSTALAR GIT SE NECESSÁRIO
-    # =====================================================
-
-    sshpass -p "$SENHA" ssh \
-    -o StrictHostKeyChecking=no \
-    -o UserKnownHostsFile=/dev/null \
-    -t ${USUARIO}@${IP} \
-    "echo '$SENHA' | sudo -S apt install git -y >/dev/null 2>&1"
-
-    # =====================================================
-    # CLONE OU UPDATE
+    # REMOVE ESTRUTURA ANTIGA
     # =====================================================
 
     sshpass -p "$SENHA" ssh \
     -o StrictHostKeyChecking=no \
     -o UserKnownHostsFile=/dev/null \
-    -t ${USUARIO}@${IP} \
-    "echo '$SENHA' | sudo -S bash -c '
+    ${USUARIO}@${IP} "rm -rf /tmp/lab" >/dev/null 2>&1
 
-    if [ ! -d \"$REMOTE_DIR\" ]; then
+    # =====================================================
+    # SCP
+    # =====================================================
 
-        git clone \"$REPO_URL\" \"$REMOTE_DIR\"
-
-    else
-
-        cd \"$REMOTE_DIR\"
-
-        git pull
-
-    fi
-
-    chmod +x $REMOTE_DIR/core/*.sh
-    chmod +x $REMOTE_DIR/modulos/*.sh
-
-    '"
+    sshpass -p "$SENHA" scp \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -r "$BASE_DIR" \
+    ${USUARIO}@${IP}:/tmp/
 
     if [ $? -ne 0 ]; then
 
-        status_erro "Falha ao atualizar estrutura"
+        status_erro "Falha ao copiar arquivos"
+
+        echo
+        echo "Verifique:"
+        echo " - IP"
+        echo " - Usuário"
+        echo " - Senha"
+        echo " - SSH habilitado"
+        echo " - Firewall"
+        echo
 
         pausa
 
         return
     fi
 
-    status_ok "Estrutura sincronizada"
+    status_ok "Estrutura copiada"
 
     # =====================================================
     # LOOP REMOTO
@@ -172,7 +166,7 @@ executar_modulo_remoto() {
     -t ${USUARIO}@${IP} \
     "echo '$SENHA' | sudo -S bash -c '
 
-    cd $REMOTE_DIR/core
+    cd /tmp/lab/core
 
     source ./logger.sh
     source ../modulos/${MODULO_SCRIPT}
@@ -228,7 +222,7 @@ executar_todos_remoto() {
     -t ${USUARIO}@${IP} \
     "echo '$SENHA' | sudo -S bash -c '
 
-    cd $REMOTE_DIR/core
+    cd /tmp/lab/core
 
     source ./logger.sh
 
