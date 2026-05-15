@@ -1,0 +1,333 @@
+#!/bin/bash
+
+source ../core/logger.sh
+source ../core/config.conf
+
+configurar_dns() {
+
+    titulo "MÓDULO DNS"
+
+    DNSNONE_OK="NAO"
+    DNS_CONFIGURADO="NAO"
+    RESOLV_IMUTAVEL="NAO"
+    RESOLVED_DESATIVADO="NAO"
+
+    linha
+
+    if grep -q "^dns=none" "$ARQ_NM"; then
+
+        status_ok "Verificando dns=none"
+
+        DNSNONE_OK="SIM"
+
+    else
+
+        status_warn "Verificando dns=none"
+
+    fi
+
+    echo
+
+    if [ -f /etc/resolv.conf ] || [ -L /etc/resolv.conf ]; then
+
+        status_ok "Verificando resolv.conf"
+
+        if grep -q "$DNS1" /etc/resolv.conf 2>/dev/null; then
+            status_ok "Verificando DNS1 ($DNS1)"
+        else
+            status_warn "Verificando DNS1 ($DNS1)"
+        fi
+
+        if grep -q "$DNS2" /etc/resolv.conf 2>/dev/null; then
+            status_ok "Verificando DNS2 ($DNS2)"
+        else
+            status_warn "Verificando DNS2 ($DNS2)"
+        fi
+
+        if grep -q "$DNS3" /etc/resolv.conf 2>/dev/null; then
+            status_ok "Verificando DNS3 ($DNS3)"
+        else
+            status_warn "Verificando DNS3 ($DNS3)"
+        fi
+
+        if grep -q "$DNS1" /etc/resolv.conf 2>/dev/null && \
+           grep -q "$DNS2" /etc/resolv.conf 2>/dev/null && \
+           grep -q "$DNS3" /etc/resolv.conf 2>/dev/null; then
+
+            DNS_CONFIGURADO="SIM"
+
+        fi
+
+        if lsattr /etc/resolv.conf 2>/dev/null | grep -q "\-i\-"; then
+
+            status_warn "Verificando proteção resolv.conf"
+
+        else
+
+            status_ok "Verificando proteção resolv.conf"
+
+            RESOLV_IMUTAVEL="SIM"
+
+        fi
+
+        if [ -L /etc/resolv.conf ]; then
+
+            status_warn "Verificando tipo resolv.conf"
+
+        else
+
+            status_ok "Verificando tipo resolv.conf"
+
+        fi
+
+    else
+
+        status_erro "Verificando resolv.conf"
+
+    fi
+
+    echo
+
+    if systemctl is-enabled systemd-resolved >/dev/null 2>&1; then
+
+        status_warn "Verificando systemd-resolved"
+
+    else
+
+        status_ok "Verificando systemd-resolved"
+
+        RESOLVED_DESATIVADO="SIM"
+
+    fi
+
+    echo
+
+    linha
+
+    titulo "RESUMO"
+
+    if [ "$DNSNONE_OK" = "SIM" ]; then
+        status_ok "dns=none"
+    else
+        status_warn "dns=none"
+    fi
+
+    if [ "$DNS_CONFIGURADO" = "SIM" ]; then
+        status_ok "DNS configurado"
+    else
+        status_warn "DNS configurado"
+    fi
+
+    if [ "$RESOLV_IMUTAVEL" = "SIM" ]; then
+        status_ok "resolv.conf protegido"
+    else
+        status_warn "resolv.conf protegido"
+    fi
+
+    if [ "$RESOLVED_DESATIVADO" = "SIM" ]; then
+        status_ok "systemd-resolved"
+    else
+        status_warn "systemd-resolved"
+    fi
+
+    echo
+
+    linha
+
+    menu "1 - Aplicar configurações DNS"
+    menu "2 - Reverter alterações"
+    menu "0 - Voltar"
+
+    echo
+
+    read -p "Escolha: " OPCAO < /dev/tty
+
+    case $OPCAO in
+
+    1)
+
+        linha
+
+        status_ok "Aplicando configurações DNS"
+
+        progresso 30
+
+        cp "$ARQ_NM" "${ARQ_NM}.bak" 2>/dev/null
+
+        if [ -e /etc/resolv.conf ] || [ -L /etc/resolv.conf ]; then
+
+            cp -L /etc/resolv.conf /etc/resolv.conf.bak 2>/dev/null
+
+        fi
+
+        chattr -i /etc/resolv.conf 2>/dev/null
+
+        if [ "$DNSNONE_OK" = "NAO" ]; then
+
+            sed -i '/^\[main\]/a dns=none' "$ARQ_NM"
+
+            status_ok "Configurando dns=none"
+
+        else
+
+            status_ok "dns=none já configurado"
+
+        fi
+
+        rm -f /etc/resolv.conf
+
+        cat > /etc/resolv.conf <<EOF
+nameserver $DNS1
+nameserver $DNS2
+nameserver $DNS3
+EOF
+
+        chmod 644 /etc/resolv.conf
+
+        status_ok "Criando resolv.conf"
+
+        systemctl restart NetworkManager >/dev/null 2>&1 &
+
+        spinner $!
+
+        status_ok "Reiniciando NetworkManager"
+
+        echo
+
+        if [ "$RESOLVED_DESATIVADO" = "NAO" ]; then
+
+            read -p "Deseja desativar systemd-resolved? (S/N): " RESP < /dev/tty
+
+            if [[ "$RESP" =~ ^[Ss]$ ]]; then
+
+                systemctl disable systemd-resolved >/dev/null 2>&1
+                systemctl stop systemd-resolved >/dev/null 2>&1
+
+                status_ok "Desativando systemd-resolved"
+
+            else
+
+                status_warn "systemd-resolved mantido ativo"
+
+            fi
+
+        else
+
+            status_ok "systemd-resolved já desativado"
+
+        fi
+
+        echo
+
+        if [ "$RESOLV_IMUTAVEL" = "NAO" ]; then
+
+            read -p "Deseja tornar o resolv.conf IMUTÁVEL? (S/N): " TRAVAR < /dev/tty
+
+            if [[ "$TRAVAR" =~ ^[Ss]$ ]]; then
+
+                chattr +i /etc/resolv.conf
+
+                status_ok "Protegendo resolv.conf"
+
+            else
+
+                status_warn "resolv.conf mantido mutável"
+
+            fi
+
+        else
+
+            status_ok "resolv.conf já protegido"
+
+        fi
+
+        ;;
+
+    2)
+
+        linha
+
+        status_ok "Revertendo alterações"
+
+        progresso 20
+
+        chattr -i /etc/resolv.conf 2>/dev/null
+
+        rm -f /etc/resolv.conf
+
+        if [ -f "${ARQ_NM}.bak" ]; then
+
+            cp "${ARQ_NM}.bak" "$ARQ_NM"
+
+            status_ok "Restaurando NetworkManager.conf"
+
+        fi
+
+        ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+
+        status_ok "Restaurando link simbólico"
+
+        chmod 644 /etc/resolv.conf 2>/dev/null
+
+        systemctl enable systemd-resolved >/dev/null 2>&1
+        systemctl start systemd-resolved >/dev/null 2>&1
+
+        status_ok "Reativando systemd-resolved"
+
+        systemctl restart NetworkManager >/dev/null 2>&1 &
+
+        spinner $!
+
+        status_ok "Reiniciando NetworkManager"
+
+        ;;
+
+    0)
+
+        return
+        ;;
+
+    *)
+
+        status_warn "Opção inválida"
+
+        ;;
+
+    esac
+
+    echo
+
+    linha
+
+    titulo "STATUS FINAL"
+
+    if [ -L /etc/resolv.conf ]; then
+
+        status_warn "resolv.conf está como LINK simbólico"
+
+    else
+
+        status_ok "resolv.conf está como ARQUIVO físico"
+
+    fi
+
+    echo
+
+    if grep -q "$DNS1" /etc/resolv.conf 2>/dev/null && \
+       grep -q "$DNS2" /etc/resolv.conf 2>/dev/null && \
+       grep -q "$DNS3" /etc/resolv.conf 2>/dev/null; then
+
+        status_ok "DNS atualmente configurados"
+
+    else
+
+        status_warn "DNS atualmente configurados"
+
+    fi
+
+    grep nameserver /etc/resolv.conf 2>/dev/null
+
+    echo
+
+    pausa
+}

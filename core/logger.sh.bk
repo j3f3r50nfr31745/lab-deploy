@@ -1,0 +1,58 @@
+#!/bin/bash
+
+VERDE="\e[32m"
+VERMELHO="\e[31m"
+AMARELO="\e[33m"
+AZUL="\e[34m"
+CIANO="\e[36m"
+BRANCO="\e[97m"
+RESET="\e[0m"
+
+LARGURA=55
+
+titulo() {
+
+    echo
+    echo -e "${AZUL}=================================================${RESET}"
+    echo -e "${BRANCO} $1 ${RESET}"
+    echo -e "${AZUL}=================================================${RESET}"
+    echo
+}
+
+linha() {
+
+    echo -e "${AZUL}-------------------------------------------------${RESET}"
+}
+
+status_ok() {
+
+    printf "%-${LARGURA}s"
+
+    echo -e "[ ${VERDE}OK${RESET} ]"
+}
+
+status_warn() {
+
+    printf "%-${LARGURA}s" "$1"
+
+    echo -e "[ ${AMARELO}AVISO${RESET} ]"
+}
+
+status_erro() {
+
+    printf "%-${LARGURA}s" "$1"
+
+    echo -e "[ ${VERMELHO}ERRO${RESET} ]"
+}
+
+status_info() {
+
+    printf "%-${LARGURA}s" "$1"
+
+    echo -e "[ ${CIANO}INFO${RESET} ]"
+}
+
+menu() {
+
+    echo -e "${AZUL}[MENU]${RESET} $1"
+}
